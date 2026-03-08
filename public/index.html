@@ -1513,6 +1513,44 @@ setInterval(()=>{
   if(el)el.textContent=(base+Math.floor(Math.random()*3)).toLocaleString();
   if(ol)ol.textContent=Math.max(8,online);
 },7000);
-</script>
+// ── STOCK REAL DESDE SUPABASE ──
+async function loadRealStock(){
+  try{
+    const r = await fetch('/api/stock');
+    if(!r.ok) return;
+    const counts = await r.json();
+    // counts = { "Netflix Premium": 3, "Spotify Premium": 1, ... }
+
+    document.querySelectorAll('.pcard').forEach(card=>{
+      const nameEl = card.querySelector('.pcard-name');
+      if(!nameEl) return;
+      const name = nameEl.textContent.trim();
+      const count = counts[name];
+      if(count === undefined) return;
+
+      const stockRow = card.querySelector('.stock-row');
+      const stockBar = card.querySelector('.stock-bar');
+      const stockTxt = card.querySelector('.stock-txt');
+      const addBtn = card.querySelector('.add-btn');
+
+      if(count === 0){
+        if(stockBar) stockBar.style.width='100%', stockBar.style.background='var(--red)';
+        if(stockTxt) stockTxt.textContent='Sin stock', stockTxt.style.color='var(--red)';
+        if(addBtn) addBtn.disabled=true, addBtn.textContent='Sin stock', addBtn.style.opacity='.4', addBtn.style.cursor='not-allowed';
+      } else if(count <= 2){
+        if(stockBar) stockBar.style.width='90%', stockBar.style.background='var(--gold)';
+        if(stockTxt) stockTxt.textContent=`¡Solo ${count} ${count===1?'queda':'quedan'}!`, stockTxt.style.color='var(--gold)';
+      } else {
+        if(stockTxt) stockTxt.textContent=`${count} disponibles`;
+      }
+    });
+  }catch(e){
+    console.log('Stock API no disponible');
+  }
+}
+
+// Cargar stock al inicio
+loadRealStock();
+
 </body>
 </html>
