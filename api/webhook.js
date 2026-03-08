@@ -40,23 +40,38 @@ export default async function handler(req, res) {
   console.log(`Orden: ${order_id} | Estado: ${payment_status}`);
 
   const estadosValidos = ['confirmed', 'finished', 'partially_paid'];
+  console.log('[v0] Estados validos:', estadosValidos);
+  console.log('[v0] Estado recibido:', payment_status);
+  console.log('[v0] Es estado valido?:', estadosValidos.includes(payment_status));
+  
   if (estadosValidos.includes(payment_status)) {
     // order_id formato: "ORD-XXXXX|NombreProducto|email@cliente.com"
+    console.log('[v0] order_id completo recibido:', order_id);
     const parts = (order_id || '').split('|');
+    console.log('[v0] Parts despues de split:', JSON.stringify(parts));
+    
     const orderId = parts[0];
     const productName = parts[1] || '';
     const customerEmail = parts[2] || '';
 
-    console.log(`Entregando: ${productName} → ${customerEmail}`);
+    console.log(`[v0] Entregando: ${productName} → ${customerEmail}`);
+    console.log('[v0] orderId:', orderId);
+    console.log('[v0] productName:', productName);
+    console.log('[v0] customerEmail:', customerEmail);
 
     if (productName && customerEmail) {
-      const result = await deliverOrder({ productName, customerEmail, orderId });
-      console.log('Resultado deliver:', JSON.stringify(result));
+      try {
+        const result = await deliverOrder({ productName, customerEmail, orderId });
+        console.log('[v0] Resultado deliver:', JSON.stringify(result));
+      } catch (err) {
+        console.error('[v0] ERROR en deliverOrder:', err.message);
+        console.error('[v0] Stack:', err.stack);
+      }
     } else {
-      console.error('❌ order_id sin producto o email:', order_id);
+      console.error('[v0] order_id sin producto o email:', order_id);
     }
   } else {
-    console.log(`Estado ${payment_status} ignorado (no es pago final)`);
+    console.log(`[v0] Estado ${payment_status} ignorado (no es pago final)`);
   }
 
   return res.status(200).json({ received: true });

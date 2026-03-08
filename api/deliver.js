@@ -3,12 +3,37 @@ export async function deliverOrder({ productName, customerEmail, orderId }) {
   const SUPABASE_URL = process.env.SUPABASE_URL;
   const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
+  console.log('[v0] === INICIANDO ENTREGA ===');
+  console.log('[v0] Producto:', productName);
+  console.log('[v0] Email:', customerEmail);
+  console.log('[v0] Orden:', orderId);
+  console.log('[v0] SUPABASE_URL:', SUPABASE_URL ? 'OK' : 'FALTA');
+  console.log('[v0] SUPABASE_KEY:', SUPABASE_KEY ? 'OK' : 'FALTA');
+  console.log('[v0] RESEND_API_KEY:', process.env.RESEND_API_KEY ? 'OK' : 'FALTA');
+
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.error('[v0] ERROR: Variables de Supabase no configuradas');
+    return { success: false, reason: 'missing_supabase_config' };
+  }
+
   // 1. Buscar una cuenta disponible en Supabase
-  const searchRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/stock?product=eq.${encodeURIComponent(productName)}&delivered=eq.false&limit=1`,
-    { headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } }
-  );
+  const searchUrl = `${SUPABASE_URL}/rest/v1/stock?product=eq.${encodeURIComponent(productName)}&delivered=eq.false&limit=1`;
+  console.log('[v0] Buscando stock en:', searchUrl);
+  
+  const searchRes = await fetch(searchUrl, { 
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` } 
+  });
+  
+  console.log('[v0] Respuesta Supabase status:', searchRes.status);
+  
+  if (!searchRes.ok) {
+    const errorText = await searchRes.text();
+    console.error('[v0] Error buscando stock:', errorText);
+    return { success: false, reason: 'supabase_search_error', detail: errorText };
+  }
+  
   const items = await searchRes.json();
+  console.log('[v0] Items encontrados:', JSON.stringify(items));
 
   if (!items.length) {
     console.error(`Sin stock para: ${productName}`);
@@ -51,18 +76,39 @@ export async function deliverOrder({ productName, customerEmail, orderId }) {
   });
 
   // 4. Mandar email al cliente
-  await sendCredentialsEmail({
+  console.log('[v0] Enviando email con credenciales:', JSON.stringify(item.credentials));
+  
+  const emailResult = await sendCredentialsEmail({
     productName,
     credentials: item.credentials,
     customerEmail,
     orderId,
   });
 
-  console.log(`✅ Entregado: ${productName} → ${customerEmail}`);
+  if (!emailResult.success) {
+    console.error('[v0] ERROR enviando email:', emailResult.error);
+    return { success: false, reason: 'email_failed', detail: emailResult.error };
+  }
+
+  console.log(`[v0] ✅ Entregado exitosamente: ${productName} → ${customerEmail}`);
   return { success: true };
 }
 
 async function sendCredentialsEmail({ productName, credentials, customerEmail, orderId }) {
+  console.log('[v0] === ENVIANDO EMAIL ===');
+  console.log('[v0] To:', customerEmail);
+  console.log('[v0] Product:', productName);
+  
+  if (!process.env.RESEND_API_KEY) {
+    console.error('[v0] ERROR: RESEND_API_KEY no esta configurada');
+    return { success: false, error: 'RESEND_API_KEY no configurada' };
+  }
+
+  if (!credentials || typeof credentials !== 'object') {
+    console.error('[v0] ERROR: Credenciales invalidas:', credentials);
+    return { success: false, error: 'Credenciales invalidas' };
+  }
+
   const credHtml = Object.entries(credentials)
     .map(([key, val]) => `
       <tr>
@@ -93,17 +139,33 @@ async function sendCredentialsEmail({ productName, credentials, customerEmail, o
   </div>
 </body></html>`;
 
-  const r = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
-    body: JSON.stringify({
-      from: 'SowyStore <pedidos@sowy.store>',
-      to: customerEmail,
-      subject: `✅ Tu ${productName} — Orden #${orderId}`,
-      html,
-    }),
-  });
-  if (!r.ok) console.error('Resend error:', await r.json());
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+      body: JSON.stringify({
+        from: 'SowyStore <pedidos@sowy.store>',
+        to: customerEmail,
+        subject: `Tu ${productName} — Orden #${orderId}`,
+        html,
+      }),
+    });
+    
+    const responseData = await r.json();
+    console.log('[v0] Resend response status:', r.status);
+    console.log('[v0] Resend response data:', JSON.stringify(responseData));
+    
+    if (!r.ok) {
+      console.error('[v0] Resend error:', responseData);
+      return { success: false, error: JSON.stringify(responseData) };
+    }
+    
+    console.log('[v0] Email enviado exitosamente!');
+    return { success: true, data: responseData };
+  } catch (err) {
+    console.error('[v0] Exception enviando email:', err.message);
+    return { success: false, error: err.message };
+  }
 }
 
 async function sendAdminAlert({ productName, customerEmail, orderId }) {
